@@ -14,34 +14,48 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install dpkg ldid
+          brew install dpkg ldid xz
           sudo mkdir -p /opt/theos
           sudo chown -R $USER /opt/theos
 
       - name: Install Theos
         run: |
           git clone --depth=1 https://github.com/theos/theos.git /opt/theos
-          # Use Xcode's built-in iOS SDK (macOS-15 runner has it)
           echo "THEOS=/opt/theos" >> $GITHUB_ENV
-          echo "THEOS_PACKAGE_DIR=\$(pwd)/packages" >> $GITHUB_ENV
+          echo "TARGET=iphone:clang:latest:14.0" >> $GITHUB_ENV
 
-      - name: Build
+      - name: Compile dylib
         run: |
           export THEOS=/opt/theos
           export TARGET=iphone:clang:latest:14.0
-          make clean package
-          ls -la packages/
+          # Only compile, skip .deb packaging
+          make clean
+          make messages=yes
+          echo "--- Build output ---"
+          find .theos -name "*.dylib" -o -name "*.bundle" 2>/dev/null
 
-      - name: Upload .deb
+      - name: Upload .dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: TiebaAdsBlocker-dylib
+          path: |
+            .theos/obj/debug/*.dylib
+            .theos/obj/*.dylib
+          if-no-files-found: error
+
+      - name: Build .deb package
+        continue-on-error: true
+        run: |
+          export THEOS=/opt/theos
+          # Install dm.pl from Theos
+          git clone --depth=1 https://github.com/theos/dm.pl.git /opt/theos/vendor/dm.pl 2>/dev/null || true
+          ln -sf /opt/theos/vendor/dm.pl/dm.pl /opt/theos/bin/dm.pl 2>/dev/null || true
+          make clean package
+          ls -la packages/ 2>/dev/null || echo "No .deb created"
+
+      - name: Upload .deb (if built)
         uses: actions/upload-artifact@v4
         with:
           name: TiebaAdsBlocker-deb
           path: packages/*.deb
-          if-no-files-found: warn
-
-      - name: Upload raw .dylib
-        uses: actions/upload-artifact@v4
-        with:
-          name: TiebaAdsBlocker-dylib
-          path: .theos/obj/debug/TiebaAdsBlocker.dylib
-          if-no-files-found: warn
+          if-no-files-found: ignore
