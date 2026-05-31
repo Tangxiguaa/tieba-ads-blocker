@@ -1,15 +1,20 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 static UIWindow *findKeyWin(void) {
-    if (@available(iOS 13, *)) {
+    if (@available(iOS 15, *)) {
         for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
-            if ([s isKindOfClass:[UIWindowScene class]] && ((UIWindowScene *)s).activationState == UISceneActivationStateForegroundActive)
-                return ((UIWindowScene *)s).keyWindow;
+            if ([s isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *ws = (UIWindowScene *)s;
+                if (ws.activationState == UISceneActivationStateForegroundActive)
+                    return ws.keyWindow;
+            }
         }
     }
-    return UIApplication.sharedApplication.windows.firstObject;
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    return [[UIApplication sharedApplication] windows].firstObject;
+    #pragma clang diagnostic pop
 }
 
 static void dismissAds(UIViewController *vc) {
