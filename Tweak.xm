@@ -1,137 +1,96 @@
-#import <Foundation/Foundation.h>
+// == Bailu Tieba Ads Blocker ==
+// For Baidu Tieba iOS 12.5.1 ~ 22.2.1
+
 #import <UIKit/UIKit.h>
 
-#pragma mark - Ad domain list
-static NSSet *adDomains(void) {
-    static NSSet *domains;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        domains = [NSSet setWithObjects:
-            @"cscdn.baidu.com",
-            @"gsp0.baidu.com",
-            @"eclick.baidu.com",
-            @"nsclick.baidu.com",
-            @"wk.baidu.com",
-            @"cb.baidu.com",
-            @"baidutv.baidu.com",
-            @"dup.baidustatic.com",
-            @"c.baidu.com",
-            @"pos.baidu.com",
-            @"cbjs.baidu.com",
-            @"spcode.baidu.com",
-            @"baidustatic.com",
-            @"bdimg.com",
-            @"bcebos.com",
-            @"appsimg.baidu.com",
-            @"adland.baidu.com",
-            @"union.baidu.com",
-            @"adm.baidu.com",
-            @"mobads.baidu.com",
-            @"afp.baidu.com",
-            @"rtax.cdn.cn",
-            nil];
-    });
-    return domains;
+static void killView(UIView *view) {
+    view.hidden = YES;
+    [view removeFromSuperview];
 }
 
-#pragma mark - NSURLProtocol: intercept & block ad requests
-@interface AdBlockerProtocol : NSURLProtocol
-@end
-
-@implementation AdBlockerProtocol
-
-+ (BOOL)canInitWithRequest:(NSURLRequest *)request {
-    NSString *host = request.URL.host.lowercaseString;
-    if (host.length == 0) return NO;
-    for (NSString *domain in adDomains()) {
-        if ([host containsString:domain] || [host hasSuffix:domain]) {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-+ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
-    return request;
-}
-
-- (void)startLoading {
-    id<NSURLProtocolClient> client = self.client;
-    NSURL *url = self.request.URL;
-    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:204 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
-    [client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-    [client URLProtocolDidFinishLoading:self];
-}
-
-- (void)stopLoading {}
-
-@end
-
-#pragma mark - Splash ad detection via UIWindow
-%hook UIWindow
-- (void)didAddSubview:(UIView *)subview {
-    %orig;
-    NSString *cn = NSStringFromClass([subview class]);
-    if ([cn containsString:@"Splash"] || [cn containsString:@"LaunchAd"]) {
-        subview.hidden = YES;
-    }
-}
+%hook TBCCommercialAdBaseCell
+- (void)setupUI { killView(self.contentView); }
+- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; killView(self.contentView); }
 %end
 
-#pragma mark - ViewController-level splash dismissal
-%hook UIViewController
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    NSString *cn = NSStringFromClass([self class]);
-    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"]) {
-        [self dismissViewControllerAnimated:NO completion:nil];
-    }
-}
+%hook TBCCommercialAdSmallImageCell
+- (void)setupUI { killView(self.contentView); }
+- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
 %end
 
-#pragma mark - Cell-level ad detection (label text only, never by class name)
-%hook UITableViewCell
-- (void)layoutSubviews {
-    %orig;
-    __block BOOL hasAdLabel = NO;
-    [self.subviews enumerateObjectsUsingBlock:^(UIView *sub, NSUInteger idx, BOOL *stop) {
-        if ([sub isKindOfClass:[UILabel class]]) {
-            NSString *t = [(UILabel *)sub text];
-            if (t && ([t containsString:@"\u5e7f\u544a"] || [t containsString:@"AD"] || [t containsString:@"ad"])) {
-                hasAdLabel = YES;
-                *stop = YES;
-            }
-        }
-    }];
-    if (hasAdLabel) {
-        self.hidden = YES;
-        self.frame = CGRectZero;
-    }
-}
+%hook TBCCommercialAdSmallImageContentView
+- (void)setupUI { killView(self); }
+- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
 %end
 
-%hook UICollectionViewCell
-- (void)layoutSubviews {
-    %orig;
-    __block BOOL hasAdLabel = NO;
-    [self.subviews enumerateObjectsUsingBlock:^(UIView *sub, NSUInteger idx, BOOL *stop) {
-        if ([sub isKindOfClass:[UILabel class]]) {
-            NSString *t = [(UILabel *)sub text];
-            if (t && ([t containsString:@"\u5e7f\u544a"] || [t containsString:@"AD"] || [t containsString:@"ad"])) {
-                hasAdLabel = YES;
-                *stop = YES;
-            }
-        }
-    }];
-    if (hasAdLabel) {
-        self.hidden = YES;
-        self.frame = CGRectZero;
-    }
-}
+%hook TBCLegoVideoNewAdCardCell
+- (void)bindData:(id)data { killView(self.contentView); self.hidden = YES; }
 %end
 
-%ctor {
-    [NSURLProtocol registerClass:[AdBlockerProtocol class]];
-    NSLog(@"[TiebaAdsBlocker v5] Loaded - AdBlockerProtocol registered, %lu domains",
-          (unsigned long)[adDomains() count]);
+%hook TBCListViewAdCell
+- (void)setupUI { self.hidden = YES; killView(self.contentView); }
+- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+%end
+
+%hook TBCPBReplyAdCell
+- (void)setupUI { killView(self.contentView); }
+- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+%end
+
+%hook TBCPBFirstFloorBannerComponent
+- (BOOL)shouldShowBannerView { return NO; }
+- (BOOL)shouldShowRecommendAdRecreationView { return NO; }
+- (BOOL)shouldShowSimilarBannerView { return NO; }
+- (void)setupPbRecommendAdRecreationView {}
+- (CGFloat)cardHeight { return 0.0f; }
+- (CGFloat)sepSpace { return 0.0f; }
+- (CGFloat)topPadding { return 0.0f; }
+%end
+
+%hook TBCPBRecommendLiveView
+- (BOOL)shouldShowAd { return NO; }
+%end
+
+%hook TBCLaunchADViewController
+- (BOOL)shouldShowLaunchAd { return NO; }
+- (BOOL)shouldInitAd { return NO; }
+- (void)initializeAdWindow {}
+- (void)viewDidLoad { %orig; for (UIView *sub in self.view.subviews) [sub removeFromSuperview]; }
+- (BOOL)isRequestBearAd { return NO; }
+- (BOOL)isRequestPLGSplashAd { return NO; }
+%end
+
+%hook TBCActivityFloatingView
++ (id)activityFloatingViewWithConfig:(id)config { return nil; }
+- (void)showActivityFloatingtWithCurrentVC:(id)vc view:(id)view {}
+%end
+
+%hook TBCActivityFloatingViewController
+- (id)init { return nil; }
+- (void)setHidden:(BOOL)hidden { %orig(YES); }
+%end
+
+%hook TBCLiveQuizEntranceItem
+- (CGFloat)viewHeight { return 0.0f; }
+%end
+
+%hook TBCAdBaseItem
+- (BOOL)isEmptyAd { return YES; }
+- (BOOL)isVipRemoveAD { return YES; }
+- (void)showAdFreeAward:(id)award {}
+- (CGFloat)fetchAdFreeAwardHeight { return 0.0f; }
+- (void)realShowBearADCellAfter:(id)after {}
+%end
+
+%hook TBClientAppDelegate
+- (CGFloat)tableView:(id)tableView rowHeightForObject:(id)object {
+    Class cls = NSClassFromString(@"TBCAdBaseItem");
+    if (cls && [object isKindOfClass:cls]) return 0.0f;
+    return %orig;
 }
+- (void)setObject:(id)object {
+    Class cls = NSClassFromString(@"TBCAdBaseItem");
+    if (cls && [object isKindOfClass:cls]) return;
+    %orig;
+}
+%end
