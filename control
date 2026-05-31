@@ -1,0 +1,10 @@
+Package: com.codex.tieba.adsblocker
+Name: TiebaAdsBlocker
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 14.0)
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: ????????? - ??????????????????
+Maintainer: Codex
+Author: Codex
+Section: Tweaks
+Priority: optional
