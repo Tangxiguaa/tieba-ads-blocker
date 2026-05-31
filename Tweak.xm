@@ -1,20 +1,53 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
-// v5: NSURLProtocol based - blocks ad requests at system level
+#pragma mark - Ad domain list
+static NSSet *adDomains(void) {
+    static NSSet *domains;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        domains = [NSSet setWithObjects:
+            @"cscdn.baidu.com",
+            @"gsp0.baidu.com",
+            @"eclick.baidu.com",
+            @"nsclick.baidu.com",
+            @"wk.baidu.com",
+            @"cb.baidu.com",
+            @"baidutv.baidu.com",
+            @"dup.baidustatic.com",
+            @"c.baidu.com",
+            @"pos.baidu.com",
+            @"cbjs.baidu.com",
+            @"spcode.baidu.com",
+            @"baidustatic.com",
+            @"bdimg.com",
+            @"bcebos.com",
+            @"appsimg.baidu.com",
+            @"adland.baidu.com",
+            @"union.baidu.com",
+            @"adm.baidu.com",
+            @"mobads.baidu.com",
+            @"afp.baidu.com",
+            @"rtax.cdn.cn",
+            nil];
+    });
+    return domains;
+}
 
-@interface AdBlocker : NSURLProtocol @end
-@implementation AdBlocker
+#pragma mark - NSURLProtocol: intercept & block ad requests
+@interface AdBlockerProtocol : NSURLProtocol
+@end
+
+@implementation AdBlockerProtocol
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     NSString *host = request.URL.host.lowercaseString;
-    if (!host) return NO;
-    if ([host hasSuffix:@"eclick.baidu.com"]) return YES;
-    if ([host hasSuffix:@"nsclick.baidu.com"]) return YES;
-    if ([host hasSuffix:@"pos.baidu.com"]) return YES;
-    if ([host hasSuffix:@"mobads.baidu.com"]) return YES;
-    if ([host hasSuffix:@"union.baidu.com"]) return YES;
-    if ([host hasSuffix:@"adm.baidu.com"]) return YES;
+    if (host.length == 0) return NO;
+    for (NSString *domain in adDomains()) {
+        if ([host containsString:domain] || [host hasSuffix:domain]) {
+            return YES;
+        }
+    }
     return NO;
 }
 
@@ -23,38 +56,82 @@
 }
 
 - (void)startLoading {
-    NSDictionary *h = @{};
-    NSHTTPURLResponse *r = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:204 HTTPVersion:@"1.1" headerFields:h];
-    [self.client URLProtocol:self didReceiveResponse:r cacheStoragePolicy:0];
-    [self.client URLProtocolDidFinishLoading:self];
+    id<NSURLProtocolClient> client = self.client;
+    NSURL *url = self.request.URL;
+    NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:204 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
+    [client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+    [client URLProtocolDidFinishLoading:self];
 }
 
 - (void)stopLoading {}
+
 @end
 
-// Hook UIApplication to register NSURLProtocol and hide splash
-%hook UIApplication
-- (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
-    [NSURLProtocol registerClass:[AdBlocker class]];
-    BOOL r = %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *root = app.keyWindow.rootViewController;
-        [self dismissSplash:root];
-    });
-    return r;
-}
-- (void)dismissSplash:(UIViewController *)vc {
-    if (!vc) return;
-    NSString *cn = NSStringFromClass(vc.class);
-    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"]) {
-        [vc dismissViewControllerAnimated:NO completion:nil]; return;
+#pragma mark - Splash ad detection via UIWindow
+%hook UIWindow
+- (void)didAddSubview:(UIView *)subview {
+    %orig;
+    NSString *cn = NSStringFromClass([subview class]);
+    if ([cn containsString:@"Splash"] || [cn containsString:@"LaunchAd"]) {
+        subview.hidden = YES;
     }
-    for (UIViewController *c in vc.childViewControllers) [self dismissSplash:c];
-    if (vc.presentedViewController) [self dismissSplash:vc.presentedViewController];
+}
+%end
+
+#pragma mark - ViewController-level splash dismissal
+%hook UIViewController
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    NSString *cn = NSStringFromClass([self class]);
+    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"]) {
+        [self dismissViewControllerAnimated:NO completion:nil];
+    }
+}
+%end
+
+#pragma mark - Cell-level ad detection (label text only, never by class name)
+%hook UITableViewCell
+- (void)layoutSubviews {
+    %orig;
+    __block BOOL hasAdLabel = NO;
+    [self.subviews enumerateObjectsUsingBlock:^(UIView *sub, NSUInteger idx, BOOL *stop) {
+        if ([sub isKindOfClass:[UILabel class]]) {
+            NSString *t = [(UILabel *)sub text];
+            if (t && ([t containsString:@"\u5e7f\u544a"] || [t containsString:@"AD"] || [t containsString:@"ad"])) {
+                hasAdLabel = YES;
+                *stop = YES;
+            }
+        }
+    }];
+    if (hasAdLabel) {
+        self.hidden = YES;
+        self.frame = CGRectZero;
+    }
+}
+%end
+
+%hook UICollectionViewCell
+- (void)layoutSubviews {
+    %orig;
+    __block BOOL hasAdLabel = NO;
+    [self.subviews enumerateObjectsUsingBlock:^(UIView *sub, NSUInteger idx, BOOL *stop) {
+        if ([sub isKindOfClass:[UILabel class]]) {
+            NSString *t = [(UILabel *)sub text];
+            if (t && ([t containsString:@"\u5e7f\u544a"] || [t containsString:@"AD"] || [t containsString:@"ad"])) {
+                hasAdLabel = YES;
+                *stop = YES;
+            }
+        }
+    }];
+    if (hasAdLabel) {
+        self.hidden = YES;
+        self.frame = CGRectZero;
+    }
 }
 %end
 
 %ctor {
-    [NSURLProtocol registerClass:[AdBlocker class]];
-    NSLog(@"[TiebaBlocker] v5 loaded");
+    [NSURLProtocol registerClass:[AdBlockerProtocol class]];
+    NSLog(@"[TiebaAdsBlocker v5] Loaded - AdBlockerProtocol registered, %lu domains",
+          (unsigned long)[adDomains() count]);
 }
