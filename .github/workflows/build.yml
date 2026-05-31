@@ -12,16 +12,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Theos
+      - name: Install Dependencies
         run: |
+          brew install dpkg ldid
           sudo mkdir -p /opt/theos
           sudo chown -R $USER /opt/theos
+
+      - name: Install Theos
+        run: |
           git clone --depth=1 https://github.com/theos/theos.git /opt/theos
-          curl -fsSL https://raw.githubusercontent.com/theos/install-toolchain/main/install-toolchain.sh | bash /dev/stdin ios
+          # Use Xcode's built-in iOS SDK (macOS-15 runner has it)
+          echo "THEOS=/opt/theos" >> $GITHUB_ENV
+          echo "THEOS_PACKAGE_DIR=\$(pwd)/packages" >> $GITHUB_ENV
 
       - name: Build
         run: |
           export THEOS=/opt/theos
+          export TARGET=iphone:clang:latest:14.0
           make clean package
           ls -la packages/
 
@@ -30,9 +37,11 @@ jobs:
         with:
           name: TiebaAdsBlocker-deb
           path: packages/*.deb
+          if-no-files-found: warn
 
       - name: Upload raw .dylib
         uses: actions/upload-artifact@v4
         with:
           name: TiebaAdsBlocker-dylib
           path: .theos/obj/debug/TiebaAdsBlocker.dylib
+          if-no-files-found: warn
