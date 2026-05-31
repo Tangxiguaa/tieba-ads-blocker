@@ -55,7 +55,7 @@ static void killView(UIView *view) {
 - (BOOL)shouldShowLaunchAd { return NO; }
 - (BOOL)shouldInitAd { return NO; }
 - (void)initializeAdWindow {}
-- (void)viewDidLoad { %orig; for (UIView *sub in self.view.subviews) [sub removeFromSuperview]; }
+- (void)viewDidLoad { %orig; for (UIView *sub in ((UIViewController *)self).view.subviews) [sub removeFromSuperview]; }
 - (BOOL)isRequestBearAd { return NO; }
 - (BOOL)isRequestPLGSplashAd { return NO; }
 %end
