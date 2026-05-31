@@ -2,35 +2,25 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-static NSArray<NSString *> *adDomains(void) {
-    return @[
-        @"cscdn.baidu.com", @"gsp0.baidu.com",
-        @"eclick.baidu.com", @"nsclick.baidu.com",
-        @"wk.baidu.com", @"cb.baidu.com",
-        @"baidutv.baidu.com", @"dup.baidustatic.com",
-        @"c.baidu.com", @"wenku.baidu.com",
-        @"pos.baidu.com", @"cbjs.baidu.com",
-        @"spcode.baidu.com", @"baidustatic.com",
-        @"bdimg.com", @"bcebos.com",
-        @"appsimg.baidu.com", @"adland.baidu.com",
-        @"union.baidu.com", @"adm.baidu.com",
-        @"mobads.baidu.com", @"appc.baidu.com",
-    ];
-}
+#pragma mark - Configuration
 
 static NSSet<NSString *> *adClassPrefixes(void) {
-    return [NSSet setWithObjects:
-        @"BDNAd", @"TBAd", @"NativeAd", @"AdView",
-        @"SplashAd", @"FeedAd", @"BannerAd", @"RewardAd",
-        @"InsertAd", @"VideoAd", @"ADView", nil
-    ];
+    return [NSSet setWithObjects: @"BDNAd", @"TBAd", nil];
 }
 
-%hook NSMutableURLRequest
+#pragma mark - URL Level: Block ad requests
 
+%hook NSMutableURLRequest
 - (void)setURL:(NSURL *)url {
     NSString *host = url.host.lowercaseString;
-    for (NSString *adDomain in adDomains()) {
+    NSArray *domains = @[@"cscdn.baidu.com", @"gsp0.baidu.com",
+        @"eclick.baidu.com", @"nsclick.baidu.com", @"wk.baidu.com",
+        @"cb.baidu.com", @"baidutv.baidu.com", @"dup.baidustatic.com",
+        @"c.baidu.com", @"pos.baidu.com", @"cbjs.baidu.com",
+        @"spcode.baidu.com", @"baidustatic.com", @"bdimg.com",
+        @"bcebos.com", @"appsimg.baidu.com", @"adland.baidu.com",
+        @"union.baidu.com", @"adm.baidu.com", @"mobads.baidu.com", nil];
+    for (NSString *adDomain in domains) {
         if ([host containsString:adDomain] || [host hasSuffix:adDomain]) {
             url = [NSURL URLWithString:@"about:blank"];
             break;
@@ -38,51 +28,37 @@ static NSSet<NSString *> *adClassPrefixes(void) {
     }
     %orig(url);
 }
-%end;
+%end
 
-%hook UIApplication
-- (void)setDelegate:(id<UIApplicationDelegate>)delegate {
-    %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [TiebaAdsBlockerUtils cleanupSplashAd];
-    });
-}
-%end;
+#pragma mark - Splash Ads: Skip launch ads
 
 %hook UIWindow
 - (void)didAddSubview:(UIView *)subview {
     %orig;
-    NSString *className = NSStringFromClass([subview class]);
-    if ([className containsString:@"Splash"] ||
-        [className containsString:@"AdLaunch"] ||
-        [className containsString:@"LaunchAd"]) {
-        [TiebaAdsBlockerUtils scheduleRemoveAdView:subview afterDelay:0.1];
+    NSString *cn = NSStringFromClass([subview class]);
+    if ([cn containsString:@"Splash"] || [cn containsString:@"LaunchAd"]) {
+        subview.hidden = YES;
     }
 }
-%end;
+%end
+
+#pragma mark - Feed Ads: Filter ad cells
 
 %hook UITableViewCell
 - (void)layoutSubviews {
     %orig;
     static dispatch_once_t once;
-    static NSMutableSet<NSString *> *adIdentifierCache = nil;
-    dispatch_once(&once, ^{
-        adIdentifierCache = [NSMutableSet set];
-    });
-    NSString *reuseId = self.reuseIdentifier;
-    if (reuseId && [adIdentifierCache containsObject:reuseId]) {
-        self.hidden = YES;
-        self.frame = CGRectZero;
-        return;
-    }
+    static NSMutableSet *cache = nil;
+    dispatch_once(&once, ^{ cache = [NSMutableSet set]; });
+    NSString *rid = self.reuseIdentifier;
+    if (rid && [cache containsObject:rid]) { self.hidden = YES; self.frame = CGRectZero; return; }
     if ([TiebaAdsBlockerUtils detectAdInView:self]) {
-        [adIdentifierCache addObject:reuseId ?: @""];
+        [cache addObject:rid ?: @""];
         self.hidden = YES;
         self.frame = CGRectZero;
     }
 }
-%end;
+%end
 
 %hook UICollectionViewCell
 - (void)layoutSubviews {
@@ -92,23 +68,73 @@ static NSSet<NSString *> *adClassPrefixes(void) {
         self.frame = CGRectZero;
     }
 }
-%end;
+%end
+
+#pragma mark - VC Level: Dismiss ad pages
 
 %hook UIViewController
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    NSString *className = NSStringFromClass([self class]);
-    if ([className containsString:@"Splash"] ||
-        [className containsString:@"AdPage"] ||
-        [className containsString:@"Advertise"] ||
-        [className containsString:@"ADViewController"]) {
+    NSString *cn = NSStringFromClass([self class]);
+    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"]) {
         [self dismissViewControllerAnimated:NO completion:nil];
     }
 }
-- (void)viewDidLoad {
+%end
+
+#pragma mark - Periodic Cleanup
+
+%hook UIView
+- (void)didMoveToWindow {
     %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [TiebaAdsBlockerUtils removeAdSubviewsFromView:self.view depth:0];
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer *t) {
+            for (UIWindow *w in UIApplication.sharedApplication.windows) {
+                [TiebaAdsBlockerUtils cleanView:w];
+            }
+        }];
     });
 }
-%end;
+%end
+
+@interface TiebaAdsBlockerUtils : NSObject
++ (BOOL)detectAdInView:(UIView *)view;
++ (void)cleanView:(UIView *)view;
+@end
+
+@implementation TiebaAdsBlockerUtils
+
++ (BOOL)detectAdInView:(UIView *)view {
+    NSString *aid = view.accessibilityIdentifier;
+    if (aid && ([aid containsString:@"ad"] || [aid containsString:@"Ad"] || [aid containsString:@"广告"]))
+        return YES;
+    NSString *cn = NSStringFromClass([view class]);
+    if ([cn containsString:@"Ad"] || [cn containsString:@"ad"]) return YES;
+    for (UIView *sub in view.subviews) {
+        if ([sub isKindOfClass:[UILabel class]]) {
+            NSString *t = [(UILabel *)sub text];
+            if (t && ([t containsString:@"广告"] || [t containsString:@"AD"])) return YES;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        if ([self detectAdInView:sub]) return YES;
+    }
+    return NO;
+}
+
++ (void)cleanView:(UIView *)view {
+    if ([self detectAdInView:view]) {
+        view.hidden = YES;
+        return;
+    }
+    for (UIView *sub in [view.subviews copy]) {
+        [self cleanView:sub];
+    }
+}
+
+@end
+
+%ctor {
+    NSLog(@"[TiebaAdsBlocker] Loaded — blocking Tieba ads");
+}
