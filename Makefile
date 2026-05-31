@@ -1,17 +1,17 @@
-export TARGET = iphone:clang:latest:14.0
+﻿export TARGET := iphone:clang:14.0:14.0
 export ARCHS = arm64 arm64e
-export PACKAGE_VERSION = 1.0.0
 
-INSTALL_TARGET_PROCESSES = com.baidu.tieba
+INSTALL_TARGET_PROCESSES = *
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = TiebaAdsBlocker
+TWEAK_NAME = SplashSkipper
 
-TiebaAdsBlocker_FILES = Tweak.xm
-TiebaAdsBlocker_CFLAGS = -fobjc-arc
+SplashSkipper_FILES = Tweak.xm
+SplashSkipper_CFLAGS = -fobjc-arc
+SplashSkipper_FRAMEWORKS = UIKit Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::
-	install.exec "killall -9 com.baidu.tieba" || true
+	install.exec "killall -9 SpringBoard"
