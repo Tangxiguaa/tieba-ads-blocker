@@ -20,8 +20,9 @@ jobs:
 
       - name: Install Theos
         run: |
-          git clone --depth=1 https://github.com/theos/theos.git /opt/theos
-          /opt/theos/bin/update-theos
+          export THEOS=/opt/theos
+          git clone --depth=1 https://github.com/theos/theos.git $THEOS
+          $THEOS/bin/update-theos
           echo "THEOS=/opt/theos" >> $GITHUB_ENV
           echo "TARGET=iphone:clang:latest:14.0" >> $GITHUB_ENV
 
