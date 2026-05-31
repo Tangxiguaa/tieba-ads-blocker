@@ -1,61 +1,60 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
-static UIWindow *findKeyWin(void) {
-    if (@available(iOS 15, *)) {
-        for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
-            if ([s isKindOfClass:[UIWindowScene class]]) {
-                UIWindowScene *ws = (UIWindowScene *)s;
-                if (ws.activationState == UISceneActivationStateForegroundActive)
-                    return ws.keyWindow;
-            }
-        }
-    }
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    return [[UIApplication sharedApplication] windows].firstObject;
-    #pragma clang diagnostic pop
+// v5: NSURLProtocol based - blocks ad requests at system level
+
+@interface AdBlocker : NSURLProtocol @end
+@implementation AdBlocker
+
++ (BOOL)canInitWithRequest:(NSURLRequest *)request {
+    NSString *host = request.URL.host.lowercaseString;
+    if (!host) return NO;
+    if ([host hasSuffix:@"eclick.baidu.com"]) return YES;
+    if ([host hasSuffix:@"nsclick.baidu.com"]) return YES;
+    if ([host hasSuffix:@"pos.baidu.com"]) return YES;
+    if ([host hasSuffix:@"mobads.baidu.com"]) return YES;
+    if ([host hasSuffix:@"union.baidu.com"]) return YES;
+    if ([host hasSuffix:@"adm.baidu.com"]) return YES;
+    return NO;
 }
 
-static void dismissAds(UIViewController *vc) {
-    if (!vc) return;
-    NSString *cn = NSStringFromClass(vc.class);
-    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"] || [cn containsString:@"AdViewController"]) {
-        [vc dismissViewControllerAnimated:NO completion:nil];
-        return;
-    }
-    for (UIViewController *child in vc.childViewControllers) dismissAds(child);
-    if (vc.presentedViewController) dismissAds(vc.presentedViewController);
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
+    return request;
 }
 
-%hook NSMutableURLRequest
-- (void)setURL:(NSURL *)url {
-    NSString *h = url.host.lowercaseString;
-    if (h && ([h hasSuffix:@"eclick.baidu.com"] || [h hasSuffix:@"nsclick.baidu.com"] || [h hasSuffix:@"pos.baidu.com"] || [h hasSuffix:@"mobads.baidu.com"] || [h hasSuffix:@"union.baidu.com"])) url = [NSURL URLWithString:@"about:blank"];
-    %orig(url);
+- (void)startLoading {
+    NSDictionary *h = @{};
+    NSHTTPURLResponse *r = [[NSHTTPURLResponse alloc] initWithURL:self.request.URL statusCode:204 HTTPVersion:@"1.1" headerFields:h];
+    [self.client URLProtocol:self didReceiveResponse:r cacheStoragePolicy:0];
+    [self.client URLProtocolDidFinishLoading:self];
 }
-%end
 
+- (void)stopLoading {}
+@end
+
+// Hook UIApplication to register NSURLProtocol and hide splash
 %hook UIApplication
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
+    [NSURLProtocol registerClass:[AdBlocker class]];
     BOOL r = %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        dismissAds(findKeyWin().rootViewController);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIViewController *root = app.keyWindow.rootViewController;
+        [self dismissSplash:root];
     });
     return r;
 }
-%end
-
-%hook UITableView
-- (void)layoutSubviews {
-    %orig;
-    for (UITableViewCell *c in self.visibleCells) {
-        NSString *cn = NSStringFromClass(c.class);
-        if ([cn containsString:@"BDNAd"] || [cn containsString:@"TBAd"] || [cn containsString:@"AdCell"] || [cn containsString:@"AdItem"]) {
-            c.hidden = YES; c.frame = CGRectZero;
-        }
+- (void)dismissSplash:(UIViewController *)vc {
+    if (!vc) return;
+    NSString *cn = NSStringFromClass(vc.class);
+    if ([cn containsString:@"Splash"] || [cn containsString:@"AdPage"]) {
+        [vc dismissViewControllerAnimated:NO completion:nil]; return;
     }
+    for (UIViewController *c in vc.childViewControllers) [self dismissSplash:c];
+    if (vc.presentedViewController) [self dismissSplash:vc.presentedViewController];
 }
 %end
 
-%ctor { NSLog(@"[TiebaBlocker] v4 loaded"); }
+%ctor {
+    [NSURLProtocol registerClass:[AdBlocker class]];
+    NSLog(@"[TiebaBlocker] v5 loaded");
+}
