@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "TiebaAdsBlocker installed successfully."
+exit 0
