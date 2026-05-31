@@ -9,32 +9,32 @@ static void killView(UIView *view) {
 }
 
 %hook TBCCommercialAdBaseCell
-- (void)setupUI { killView(self.contentView); }
-- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; killView(self.contentView); }
+- (void)setupUI { killView(((UITableViewCell *)self).contentView); }
+- (void)layoutSubviews { ((UIView *)self).frame = CGRectZero; %orig; ((UIView *)self).frame = CGRectZero; killView(((UITableViewCell *)self).contentView); }
 %end
 
 %hook TBCCommercialAdSmallImageCell
-- (void)setupUI { killView(self.contentView); }
-- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+- (void)setupUI { killView(((UITableViewCell *)self).contentView); }
+- (void)layoutSubviews { ((UIView *)self).frame = CGRectZero; %orig; ((UIView *)self).frame = CGRectZero; }
 %end
 
 %hook TBCCommercialAdSmallImageContentView
-- (void)setupUI { killView(self); }
-- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+- (void)setupUI { killView((UIView *)self); }
+- (void)layoutSubviews { ((UIView *)self).frame = CGRectZero; %orig; ((UIView *)self).frame = CGRectZero; }
 %end
 
 %hook TBCLegoVideoNewAdCardCell
-- (void)bindData:(id)data { killView(self.contentView); self.hidden = YES; }
+- (void)bindData:(id)data { killView(((UITableViewCell *)self).contentView); ((UIView *)self).hidden = YES; }
 %end
 
 %hook TBCListViewAdCell
-- (void)setupUI { self.hidden = YES; killView(self.contentView); }
-- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+- (void)setupUI { ((UIView *)self).hidden = YES; killView(((UITableViewCell *)self).contentView); }
+- (void)layoutSubviews { ((UIView *)self).frame = CGRectZero; %orig; ((UIView *)self).frame = CGRectZero; }
 %end
 
 %hook TBCPBReplyAdCell
-- (void)setupUI { killView(self.contentView); }
-- (void)layoutSubviews { self.frame = CGRectZero; %orig; self.frame = CGRectZero; }
+- (void)setupUI { killView(((UITableViewCell *)self).contentView); }
+- (void)layoutSubviews { ((UIView *)self).frame = CGRectZero; %orig; ((UIView *)self).frame = CGRectZero; }
 %end
 
 %hook TBCPBFirstFloorBannerComponent
